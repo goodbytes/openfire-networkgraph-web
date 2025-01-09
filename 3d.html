@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>XMPP Network Graph</title>
+    <meta charset="UTF-8">
+    <meta http-equiv="refresh" content="900"/>
+    <meta property="og:title" content="XMPP Network Graph" />
+    <meta property="og:description" content="A visualization of interconnected XMPP domains" />
+    <meta property="og:image" content="https://xmppnetwork.goodbytes.im/networking.png" />
+    <link rel="author" href="humans.txt" />
+    <style>
+    body {
+      margin: 0;
+    }
+  </style>
+  <!-- https://github.com/vasturiano/3d-force-graph -->
+  <script src="3d-force-graph.min.js"></script>
+</head>
+
+<body>
+  <div id="3d-graph"></div>
+
+  <script>
+    const Graph = ForceGraph3D()(document.getElementById("3d-graph"))
+      .jsonUrl("data3d.json")
+      .nodeLabel("label")
+      .nodeAutoColorBy("label")
+      .nodeResolution(4)
+      .showNavInfo(true)
+      .cooldownTime(5000)
+  </script>
+</body>
+</html>

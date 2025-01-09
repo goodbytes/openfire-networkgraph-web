@@ -1,0 +1,4 @@
+/* TEAM */
+    Author: Guus der Kinderen
+    Contact: guus@goodbytes.nl
+    XMPP: guus.der.kinderen@igniterealtime.org

@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>XMPP Network Graph: FAQ</title>
+    <meta charset="UTF-8">
+    <meta property="og:title" content="XMPP Network Graph: FAQ" />
+    <meta property="og:description" content="Answers to questions related to the XMPP Network Graph website." />
+    <meta property="og:image" content="https://xmppnetwork.goodbytes.im/networking.png" />
+    <link rel="author" href="humans.txt" />
+    <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+    <header>
+        <h1>XMPP Network Graph: Frequently Asked Questions</h1>
+        <p>Answers to questions related to the XMPP Network Graph website.</p>
+    </header>
+
+    <section>
+        <header>
+            <h2>Generic Questions</h2>
+        </header>
+        <section>
+            <h3>What is this?</h3>
+            <p>The XMPP Network Graph website renders a network graph. The nodes in this graph represent XMPP domains. When two XMPP domains interact with each-other (which typically means that users from both domains are chatting with each-other), the nodes are connected by a line.</p>
+        </section>
+        <section>
+            <h3>What is up with all of those nodes without a name?</h3>
+            <p>When <em>others</em> publish data that shows that they link to <em>you</em>, they implicitly publish a bit of data about <em>you</em> as well. Given enough of these publications, information about <em>your</em> connections are out there for everyone to see, without your involvement. This is a privacy concern. That problem becomes quite apparent when graphing a network of small networks, that each have only one or two users. It quickly becomes evident who's connected to whom in such a scenario. Not everyone is comfortable having this information shared publicly.</p>
+            <p>We are erring on the side of caution here. This site will only publish the name of an XMPP domain if that domain explicitly opted-in to sharing its data by advertising support for the <a target="_blank" href="https://xmpp.org/extensions/xep-0485.html">XEP&#8209;0485:&nbsp;PubSub&nbsp;Server&nbsp;Information</a>.</p>
+        </section>
+        <section>
+            <h3>Is this an accurate representation of the network?</h3>
+            <p>No.</p>
+            <p>Firstly, it only publishes data for domains that explicitly make available this information. The vast majority of XMPP domains that are live <em>do not</em> do this.</p>
+            <p>Secondly, the data presented here is pre-processed to generate a more human friendly result: domain names are stripped of well-known subdomains representing services, duplicate domains and links are removed, as are links from and to the same domain. Certain domains are excluded all-together.</p>
+            <p>The graph does not attempt to be truly realtime. To reduce the amount of data that is being kept in-sync, periodic updates are used, rather than live-eventing, but data older than a few hours is not shown at all.</p>
+        </section>
+    </section>
+
+    <section>
+        <header>
+            <h2>Technical Questions</h2>
+        </header>
+        <section>
+            <h3>What does my domain need to support to be added to the network graph?</h3>
+            <p>To be added to the network graph, an XMPP domain needs to support <a target="_blank" href="https://xmpp.org/extensions/xep-0485.html">XEP&#8209;0485:&nbsp;PubSub&nbsp;Server&nbsp;Information</a>.</p>
+            <p>Developers and communities of the following XMPP servers have created and made available plugins and modules that add this support.</p>
+            <dl>
+                <dt>Openfire</dt>
+                <dd><a target="_blank" href="https://www.igniterealtime.org/projects/openfire/plugin-archive.jsp?plugin=pubsubserverinfo">this plugin</a></dd>
+                <dt>Prosody</dt>
+                <dd><a target="_blank" href="https://modules.prosody.im/mod_pubsub_serverinfo.html">this module</a></dd>
+                <dt>ejabberd</dt>
+                <dd><a target="_blank" href="https://github.com/processone/ejabberd-contrib/tree/master/mod_pubsub_serverinfo">this module</a></dd>
+                <dt>Tigase</dt>
+                <dd><a target="_blank" href="https://docs.tigase.net/en/latest/Tigase_Administration/Using_Tigase/_using_tigase.html#pubsub-server-information">documentation</a></dd>
+                <dt>Others</dt>
+                <dd>Ask a developer!</dd>
+            </dl>
+        </section>
+        <section>
+            <h3>I try adding my domain. Why doesn't it show up in the network graph?</h3>
+            <p>After you submit a new domain, there will have been a bit of feedback printed just under the submit form. When that suggested success, it can take a couple of minutes for new data to show up. Try reloading the website once to force a fresh view of the data.</p>
+        </section>
+        <section>
+            <h3>It still doesn't show up in the graph</h3>
+            <p>Double-check if your domain supports the <a target="_blank" href="https://xmpp.org/extensions/xep-0485.html">XEP&#8209;0485:&nbsp;PubSub&nbsp;Server&nbsp;Information</a>. Your domain should advertise the corresponding feature through service discovery.</p>
+            <p>Check if your domain accepts server-to-server connections, not only in the configuration of your XMPP software, but also in network configuration (e.g. firewalls). This application supports all common XMPP server-to-server connectivity types, including STARTTLS, DirectTLS and Server Dialback.</p>
+            <p>This application will attempt to federate with both your XMPP domain and the <em>pub/sub</em> service of your domain. This commonly uses a domain name that is a subdomain of the XMPP domain itself (e.g. <code>pubsub.example.org</code>). Common causes of network connectivity issues include:</p>
+            <ul>
+                <li>Missing DNS records: make sure that DNS records, (A, AAAA and/or SRV where appropriate) exist not only for your XMPP domain (e.g. <code>example.org</code>) but <em>also</em> for your pub/sub service (e.g. <code>pubsub.example.org</code>).</li>
+                <li>Missing certificate coverage: a common authentication mechanism used for server-to-server connections uses TLS certificates. Make sure that the certificates that are used for your domains cover <em>both</em> your XMPP domain (e.g. <code>example.org</code>) but <em>also</em> your pub/sub service (e.g. <code>pubsub.example.org</code>).</li>
+            </ul>
+        </section>
+        <section>
+            <h3>It <em>still</em> doesn't show up</h3>
+            <p>Err, sorry about that. Try getting in contact with the author of this application. Hopefully, we can troubleshoot the issue together. You'll find <a href="legal.html">contact information here</a>.</p>
+        </section>
+        <section>
+            <h3>Why does my domain shows up in the network graph when I have never added it?</h3>
+            <p>Domains show up in the network graph only when at least one of these conditions is true:</p>
+            <ul>
+                <li>the domain explicitly flags support for the <a target="_blank" href="https://xmpp.org/extensions/xep-0485.html">XEP&#8209;0485:&nbsp;PubSub&nbsp;Server&nbsp;Information</a> (by advertising its feature through service discovery);</li>
+                <li>the domain is an XMPP provider listed on <a target="_blank" href="https://providers.xmpp.net/">https://providers.xmpp.net/</a>.</li>
+            </ul>
+            <p>Your domain might have been detected by this application if it advertises that feature <em>and</em> it was federating with another domain that at one point reported its connections this application.</p>
+        </section>
+        <section>
+            <h3>Can you remove my domain from the network graph?</h3>
+            <p>Absolutely. Please reach out (<a href="legal.html">contact information here</a>) to have your domain be added to the exclusion list. The application will not show domains that are on that list (and it won't expose that list either).</p>
+        </section>
+    </section>
+
+    <footer style="position: relative">
+        <nav>
+            <ul>
+                <li><a href="/">XMPP Network Graph</a></li>
+                <li><a href="3d.html">WebGL 3D variant</a></li>
+                <li><a href="webgl.html">WebGL 2D variant</a></li>
+                <li><a href="faq.html">FAQ</a></li>
+                <li><a href="legal.html">Legal & Contact information</a></li>
+            </ul>
+        </nav>
+    </footer>
+
+</body>
+</html>

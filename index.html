@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>XMPP Network Graph</title>
+    <meta charset="UTF-8">
+    <meta http-equiv="refresh" content="900"/>
+    <meta property="og:title" content="XMPP Network Graph" />
+    <meta property="og:description" content="A visualization of interconnected XMPP domains" />
+    <meta property="og:image" content="https://xmppnetwork.goodbytes.im/networking.png" />
+    <link rel="author" href="humans.txt" />
+    <link rel="stylesheet" href="style.css" />
+
+    <style>
+        #network {
+            z-index: 0;
+            position: absolute;
+            height: 100%;
+            width: 100%;
+        }
+
+        #status {
+            margin-top: 0.5em;
+        }
+
+        #noData {
+            display: none;
+            z-index: 10;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            margin: -5em 0 0 -15em;
+            width: 30em;
+            background: whitesmoke;
+            border: 0.3em solid darkgray;
+            border-radius: 0.5em;
+            vertical-align: center;
+            padding: 0.5em;
+        }
+
+        body > header {
+            z-index: 1;
+            position: absolute;
+            margin-left: 2em;
+            background-color: rgba(255, 255, 255, .5);
+        }
+
+        body > header > h1, body > header > p {
+            text-align: center;
+        }
+
+        body > footer {
+            z-index: 10;
+            position: absolute;
+            bottom: 0;
+            width: calc(100% - 2em);
+        }
+
+        aside {
+            z-index: 3;
+            position:absolute;
+            top:3em;
+            right:0;
+            margin: 2em;
+            width: 20em;
+        }
+
+        aside article {
+            background: whitesmoke;
+            border: 0.3em solid darkgray;
+            border-radius: 0.5em;
+            vertical-align: center;
+            margin: 0.5em;
+            padding: 0.5em;
+        }
+
+        label {
+            font-weight: bold;
+        }
+
+        .close {
+            position: absolute;
+            right: -1.5em;
+            top: -0.5em;
+            width: 3em;
+            height: 3em;
+            opacity: 0.4;
+        }
+        .close:hover {
+            opacity: 1;
+        }
+        .close:before, .close:after {
+            position: absolute;
+            left: 0.5em;
+            content: ' ';
+            height: 2em;
+            width: 0.3em;
+            background-color: #333;
+        }
+        .close:before {
+            transform: rotate(45deg);
+        }
+        .close:after {
+            transform: rotate(-45deg);
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>XMPP Network Graph</h1>
+        <p>Every circle is an XMPP domain!</p>
+        <p>(servers that do not explicitly consent to have their<br>names published show up without a name)</p>
+    </header>
+
+    <aside id="sidebar">
+        <a class="close" onclick="document.getElementById('sidebar').style.display='none';"></a>
+        <article>
+            <form id="search" method="get">
+                <center>
+                    <header>
+                        <b>Search for a domain</b>
+                    </header>
+                    <p><input name="focus" id="focus" placeholder="example.org" /></p>
+
+                    <input name="search" type="submit" value="Search" />
+                </center>
+            </form>
+        </article>
+        <article>
+            <form id="submit" method="post" action="submit">
+                <center>
+                    <header>
+                        <b>Add a domain to the Network Graph</b>
+                    </header>
+                    <p><input name="domain" id="domain" placeholder="example.org" /></p>
+                    <input name="submit" type="submit" />
+                    <div id="status"></div>
+                </center>
+            </form>
+        </article>
+    </aside>
+
+    <div id="network"></div>
+    <div id="noData">
+        <article>
+            <header><h1>No data</h1></header>
+            <p>This XMPP domain does not publisher server information. Please ask an administrator of the XMPP domain to add support for <a target="_blank" href="https://xmpp.org/extensions/xep-0485.html">XEP&#8209;0485:&nbsp;PubSub&nbsp;Server&nbsp;Information</a>.</p>
+            <nav><a href="#" onclick="history.go(-1)">Back to the previous page</a></nav>
+        </article>
+    </div>
+
+    <footer>
+        <nav>
+            <ul>
+                <li><a href="/">XMPP Network Graph</a></li>
+                <li><a href="3d.html">WebGL 3D variant</a></li>
+                <li><a href="webgl.html">WebGL 2D variant</a></li>
+                <li><a href="faq.html">FAQ</a></li>
+                <li><a href="legal.html">Legal & Contact information</a></li>
+            </ul>
+        </nav>
+    </footer>
+
+    <script src="vis-network.min.js"></script>
+
+    <script>
+        let form = document.querySelector("form#submit");
+
+        function setStatus(raw) {
+            let status = document.getElementById("status");
+            while (status.hasChildNodes()) {
+                status.removeChild(status.firstChild);
+            }
+            status.appendChild(document.createTextNode(raw));
+        }
+
+        form.addEventListener("submit", function(event){
+            event.preventDefault();
+            setStatus("Submitting...");
+
+            fetch(form.action, {
+                method: "post",
+                body: new URLSearchParams(new FormData(form))
+            }).then(response => {
+                 response.text().then(raw => setStatus(raw));
+                 if (response.ok) {
+                     const request = new XMLHttpRequest();
+                     request.open( 'HEAD', 'data.json', true );
+                     // Need to hit the endpoint _twice_ to bust a cache.
+                     request.onload = getData;
+                     request.send();
+                 }
+            });
+        });
+    </script>
+    <script>
+        const nodes = new vis.DataSet([]);
+        const edges = new vis.DataSet([]);
+    
+        // create a network
+        const container = document.getElementById("network");
+        const data = {
+            nodes: nodes,
+            edges: edges
+        };
+        const options = {
+            physics: {
+                solver: 'forceAtlas2Based',
+                timestep: 1.0,
+                stabilization: {
+                    iterations: 0,
+                    updateInterval: 200,
+                    fit: true
+                },
+                forceAtlas2Based: {
+                    gravitationalConstant: -100,
+                    damping: 0.8
+                },
+                maxVelocity: 200,
+            },
+            edges: {
+                smooth: false
+            }
+        };
+        const network = new vis.Network(container, data, options);
+
+        function reduceTimestep() {
+            options.physics.timestep = options.physics.timestep - 0.1;
+            network.setOptions(options);
+
+            if (options.physics.timestep > 0.2) {
+                setTimeout(reduceTimestep, 2000);
+            } else {
+                options.physics.timestep = 0.2
+                network.setOptions(options);
+            }
+        }
+
+        function getData()
+        {
+            console.info("Obtaining data from webservice...")
+
+            const request = new XMLHttpRequest();
+            let url;
+            if (new URLSearchParams(window.location.search).has("skipAnon")) {
+                url = 'data.json?skipAnon';
+            } else if (new URLSearchParams(window.location.search).has("focus")) {
+                url = 'data.json?focus=' + new URLSearchParams(window.location.search).get("focus")
+            } else if (new URLSearchParams(window.location.search).has("combineAnon")) {
+                url = 'data.json?combineAnon';
+            } else {
+                url = 'data.json?';
+            }
+            request.open( 'GET', url, true );
+
+            request.onload = function ()
+            {
+                if ( request.status >= 200 && request.status < 400 )
+                {
+                    const data = JSON.parse( request.responseText );
+                    console.debug("Obtained " + data.nodes.length + " node(s) and " + data.edges.length + " edge(s).");
+
+                    nodes.clear();
+                    edges.clear();
+
+                    for (let i = 0; i < data.nodes.length; i++) {
+                        if (data.nodes[i].label && data.nodes[i].label.startsWith("+")) {
+                            data.nodes[i].color = {
+                                background: '#FFF'
+                            };
+                        }
+                    }
+
+                    nodes.update(data.nodes);
+                    edges.update(data.edges);
+
+                    if (data.nodes.length === 0) {
+                        document.getElementById('noData').style.display='unset';
+                    }
+
+                    network.on("doubleClick", function (params) {
+                        if (params.nodes[0]) {
+                            window.location.href = '/?focus=' + params.nodes[0];
+                        }
+                    });
+
+                    network.on("stabilized", function () {
+                        console.log("Stabilized");
+                    });
+                    network.stabilize();
+
+                    setTimeout(reduceTimestep, 2000);
+                }
+                else
+                {
+                    console.error( "Unable to read data", request.status );
+                }
+            };
+
+            request.onerror = function ( e )
+            {
+                console.error( "HTTP request for data resulted in an error", e );
+            };
+
+            request.send();
+        }
+
+        function ready(fn) {
+            if (document.attachEvent ? document.readyState === "complete" : document.readyState !== "loading"){
+                fn();
+            } else {
+                document.addEventListener('DOMContentLoaded', fn);
+            }
+        }
+
+        ready( getData );
+    </script>
+</body>
+</html>

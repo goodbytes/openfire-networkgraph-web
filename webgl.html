@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>XMPP Network Graph</title>
+    <meta charset="UTF-8">
+    <meta http-equiv="refresh" content="900"/>
+    <meta property="og:title" content="XMPP Network Graph" />
+    <meta property="og:description" content="A visualization of interconnected XMPP domains" />
+    <meta property="og:image" content="https://xmppnetwork.goodbytes.im/networking.png" />
+    <link rel="author" href="humans.txt" />
+    <link rel="stylesheet" href="style.css" />
+    <style>
+        body > header {
+            z-index: 1;
+            position: absolute;
+            margin-left: 2em;
+            background-color: rgba(255, 255, 255, .5);
+        }
+
+        body > header > h1, body > header > p {
+            text-align: center;
+        }
+
+        #network {
+            z-index: 0;
+            position: absolute;
+            width: 100%;
+            height: 100%;
+        }
+
+        #network > svg {
+            width: 100%;
+            height: 100%;
+        }
+
+        .node-label {
+            position: absolute;
+            pointer-events: none;
+            color: black;
+            background-color: rgba(245, 245, 245, 0.5);
+            z-index: 1;
+            border-radius: 0.5em;
+            padding: 0.2em 0.5em;
+        }
+
+        #status {
+            margin-top: 0.5em;
+        }
+
+        #noData {
+            display: none;
+            z-index: 10;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            margin: -5em 0 0 -15em;
+            width: 30em;
+            background: whitesmoke;
+            border: 0.3em solid darkgray;
+            border-radius: 0.5em;
+            vertical-align: center;
+            padding: 0.5em;
+        }
+
+        aside {
+            z-index: 3;
+            position:absolute;
+            top:3em;
+            right:0;
+            margin: 2em;
+            width: 20em;
+        }
+
+        aside article {
+            background: whitesmoke;
+            border: 0.3em solid darkgray;
+            border-radius: 0.5em;
+            vertical-align: center;
+            margin: 0.5em;
+            padding: 0.5em;
+        }
+
+        label {
+            font-weight: bold;
+        }
+
+        .close {
+            position: absolute;
+            right: -1.5em;
+            top: -0.5em;
+            width: 3em;
+            height: 3em;
+            opacity: 0.4;
+        }
+        .close:hover {
+            opacity: 1;
+        }
+        .close:before, .close:after {
+            position: absolute;
+            left: 0.5em;
+            content: ' ';
+            height: 2em;
+            width: 0.3em;
+            background-color: #333;
+        }
+        .close:before {
+            transform: rotate(45deg);
+        }
+        .close:after {
+            transform: rotate(-45deg);
+        }
+
+    </style>
+</head>
+<body>
+    <header>
+        <h1>XMPP Network Graph</h1>
+        <p>Every circle is an XMPP domain!</p>
+        <p>(servers that do not explicitly consent to have their<br>names published show up without a name)</p>
+    </header>
+
+    <aside id="sidebar">
+        <a class="close" onclick="document.getElementById('sidebar').style.display='none';"></a>
+        <article>
+            <form method="post" action="submit">
+                <center>
+                    <header>
+                        <b>Add a domain to the Network Graph</b>
+                    </header>
+                    <p><input name="domain" id="domain" placeholder="example.org" /></p>
+                    <input name="submit" type="submit" />
+                    <div id="status"></div>
+                </center>
+            </form>
+        </article>
+    </aside>
+
+    <div id="network"></div>
+    <div id="noData">
+        <article>
+            <header><h1>No data</h1></header>
+            <p>This XMPP domain does not publisher server information. Please ask an administrator of the XMPP domain to add support for <a target="_blank" href="https://xmpp.org/extensions/xep-0485.html">XEP&#8209;0485:&nbsp;PubSub&nbsp;Server&nbsp;Information</a>.</p>
+            <nav><a href="#" onclick="history.go(-1)">Back to the previous page</a></nav>
+        </article>
+    </div>
+
+    <footer>
+        <nav>
+            <ul>
+                <li><a href="/">XMPP Network Graph</a></li>
+                <li><a href="3d.html">WebGL 3D variant</a></li>
+                <li><a href="webgl.html">WebGL 2D variant</a></li>
+                <li><a href="faq.html">FAQ</a></li>
+                <li><a href="legal.html">Legal & Contact information</a></li>
+            </ul>
+        </nav>
+    </footer>
+
+    <script src="vivagraph.min.js"></script>
+
+    <script>
+        let form = document.querySelector("form");
+
+        function setStatus(raw) {
+            let status = document.getElementById("status");
+            while (status.hasChildNodes()) {
+                status.removeChild(status.firstChild);
+            }
+            status.appendChild(document.createTextNode(raw));
+        }
+
+        form.addEventListener("submit", function(event){
+            event.preventDefault();
+            setStatus("Submitting...");
+
+            fetch(form.action, {
+                method: "post",
+                body: new URLSearchParams(new FormData(form))
+            }).then(response => {
+                 response.text().then(raw => setStatus(raw));
+                 if (response.ok) {
+                     const request = new XMLHttpRequest();
+                     request.open( 'HEAD', 'data.json', true );
+                     // Need to hit the endpoint _twice_ to bust a cache.
+                     request.onload = getData;
+                     request.send();
+                 }
+            });
+        });
+    </script>
+    <script>
+        function getData()
+        {
+            console.info("Obtaining data from webservice...")
+
+            const request = new XMLHttpRequest();
+            let url;
+            if (new URLSearchParams(window.location.search).has("skipAnon")) {
+                url = 'data.json?skipAnon';
+            } else if (new URLSearchParams(window.location.search).has("focus")) {
+                url = 'data.json?focus=' + new URLSearchParams(window.location.search).get("focus")
+            } else if (new URLSearchParams(window.location.search).has("combineAnon")) {
+                url = 'data.json?combineAnon';
+            } else {
+                url = 'data.json?';
+            }
+            request.open( 'GET', url, true );
+
+            request.onload = function ()
+            {
+                if ( request.status >= 200 && request.status < 400 )
+                {
+                    const data = JSON.parse( request.responseText );
+                    console.debug("Obtained " + data.nodes.length + " node(s) and " + data.edges.length + " edge(s).");
+
+                    if (data.nodes.length === 0) {
+                        document.getElementById('noData').style.display='unset';
+                    }
+                    const container = document.getElementById('network');
+
+                    const graph = Viva.Graph.graph();
+                    data.nodes.forEach((node) => graph.addNode(node.id, node.label ? { label: node.label } : {}));
+                    data.edges.forEach((edge) => graph.addLink(edge.from, edge.to));
+
+                    const domLabels = generateDOMLabels(graph);
+
+                    const physicsSettings = {
+                        /**
+                         * Ideal length for links (springs in physical model).
+                         */
+                        springLength: 70,
+
+                        /**
+                         * Hook's law coefficient. 1 - solid spring.
+                         */
+                        springCoeff: 0.0008,
+
+                        /**
+                         * Coulomb's law coefficient. It's used to repel nodes thus should be negative
+                         * if you make it positive nodes start attract each other :).
+                         */
+                        gravity: -3.2,
+
+                        /**
+                         * Theta coefficient from Barnes Hut simulation. Ranged between (0, 1).
+                         * The closer it's to 1 the more nodes algorithm will have to go through.
+                         * Setting it to one makes Barnes Hut simulation no different from
+                         * brute-force forces calculation (each node is considered).
+                         */
+                        theta: 0.8,
+
+                        /**
+                         * Drag force coefficient. Used to slow down system, thus should be less than 1.
+                         * The closer it is to 0 the less tight system will be.
+                         */
+                        dragCoeff: 0.02,
+
+                        /**
+                         * Default time step (dt) for forces integration
+                         */
+                        timeStep: 5,
+                    };
+
+                    const layout = Viva.Graph.Layout.forceDirected(graph, physicsSettings);
+                    const graphics = Viva.Graph.View.webglGraphics();
+
+                    // first, tell webgl graphics we want to use custom shader to render nodes:
+                    const circleNode = buildCircleNodeShader();
+                    graphics.setNodeProgram(circleNode);
+
+                    graphics
+                        .node(function(node){
+                            return new WebglCircle(12, 0x3291A8);
+                            //return Viva.Graph.View.webglSquare(1 + Math.random() * 10, colors[(Math.random() * colors.length) << 0]);
+                        });
+
+                    graphics.placeNode(function(ui, pos) {
+                        // This callback is called by the renderer before it updates
+                        // node coordinate. We can use it to update corresponding DOM
+                        // label position;
+
+                        // we create a copy of layout position
+                        var domPos = {
+                            x: pos.x,
+                            y: pos.y
+                        };
+                        // And ask graphics to transform it to DOM coordinates:
+                        graphics.transformGraphToClientCoordinates(domPos);
+
+                        // then move corresponding dom label to its own position:
+                        var nodeId = ui.node.id;
+                        if (domLabels[nodeId]) {
+                            var labelStyle = domLabels[nodeId].style;
+                            labelStyle.left = domPos.x + 'px';
+                            labelStyle.top = domPos.y + 'px';
+                        }
+                    });
+
+                    const renderer = Viva.Graph.View.renderer(graph, {
+                        container: container,
+                        layout: layout,
+                        graphics : graphics,
+                    });
+                    renderer.run();
+
+                    const events = Viva.Graph.webglInputEvents(graphics, graph);
+                    events.dblClick(function (node) {
+                        window.location.href = '/webgl.html?focus=' + node.id;
+                    });
+
+                    function generateDOMLabels(graph) {
+                        // this will map node id into DOM element
+                        const labels = Object.create(null);
+                        graph.forEachNode(function(node) {
+                            if (node.data && node.data.label) {
+                                const label = document.createElement('span');
+                                label.classList.add('node-label');
+                                label.innerText = node.data.label;
+                                labels[node.id] = label;
+                                document.body.appendChild(label);
+                            }
+                        });
+                        return labels;
+                    }
+                }
+                else
+                {
+                    console.error( "Unable to read data", request.status );
+                }
+            };
+
+            request.onerror = function ( e )
+            {
+                console.error( "HTTP request for data resulted in an error", e );
+            };
+
+            request.send();
+        }
+
+        function ready(fn) {
+            if (document.attachEvent ? document.readyState === "complete" : document.readyState !== "loading"){
+                fn();
+            } else {
+                document.addEventListener('DOMContentLoaded', fn);
+            }
+        }
+
+        // Lets start from the easiest part - model object for node ui in webgl
+        function WebglCircle(size, color) {
+            this.size = size;
+            this.color = color;
+        }
+
+        // Next comes the hard part - implementation of API for custom shader
+        // program, used by webgl renderer:
+        function buildCircleNodeShader() {
+            // For each primitive we need 4 attributes: x, y, color and size.
+            var ATTRIBUTES_PER_PRIMITIVE = 4,
+                nodesFS = [
+                    'precision mediump float;',
+                    'varying vec4 color;',
+
+                    'void main(void) {',
+                    '   if ((gl_PointCoord.x - 0.5) * (gl_PointCoord.x - 0.5) + (gl_PointCoord.y - 0.5) * (gl_PointCoord.y - 0.5) < 0.25) {',
+                    '     gl_FragColor = color;',
+                    '   } else {',
+                    '     gl_FragColor = vec4(0);',
+                    '   }',
+                    '}'].join('\n'),
+                nodesVS = [
+                    'attribute vec2 a_vertexPos;',
+                    // Pack color and size into vector. First elemnt is color, second - size.
+                    // Since it's floating point we can only use 24 bit to pack colors...
+                    // thus alpha channel is dropped, and is always assumed to be 1.
+                    'attribute vec2 a_customAttributes;',
+                    'uniform vec2 u_screenSize;',
+                    'uniform mat4 u_transform;',
+                    'varying vec4 color;',
+
+                    'void main(void) {',
+                    '   gl_Position = u_transform * vec4(a_vertexPos/u_screenSize, 0, 1);',
+                    '   gl_PointSize = a_customAttributes[1] * u_transform[0][0];',
+                    '   float c = a_customAttributes[0];',
+                    '   color.b = mod(c, 256.0); c = floor(c/256.0);',
+                    '   color.g = mod(c, 256.0); c = floor(c/256.0);',
+                    '   color.r = mod(c, 256.0); c = floor(c/256.0); color /= 255.0;',
+                    '   color.a = 1.0;',
+                    '}'].join('\n');
+
+            var program,
+                gl,
+                buffer,
+                locations,
+                utils,
+                nodes = new Float32Array(64),
+                nodesCount = 0,
+                canvasWidth, canvasHeight, transform,
+                isCanvasDirty;
+
+            return {
+                /**
+                 * Called by webgl renderer to load the shader into gl context.
+                 */
+                load : function (glContext) {
+                    gl = glContext;
+                    webglUtils = Viva.Graph.webgl(glContext);
+
+                    program = webglUtils.createProgram(nodesVS, nodesFS);
+                    gl.useProgram(program);
+                    locations = webglUtils.getLocations(program, ['a_vertexPos', 'a_customAttributes', 'u_screenSize', 'u_transform']);
+
+                    gl.enableVertexAttribArray(locations.vertexPos);
+                    gl.enableVertexAttribArray(locations.customAttributes);
+
+                    buffer = gl.createBuffer();
+                },
+
+                /**
+                 * Called by webgl renderer to update node position in the buffer array
+                 *
+                 * @param nodeUI - data model for the rendered node (WebGLCircle in this case)
+                 * @param pos - {x, y} coordinates of the node.
+                 */
+                position : function (nodeUI, pos) {
+                    var idx = nodeUI.id;
+                    nodes[idx * ATTRIBUTES_PER_PRIMITIVE] = pos.x;
+                    nodes[idx * ATTRIBUTES_PER_PRIMITIVE + 1] = -pos.y;
+                    nodes[idx * ATTRIBUTES_PER_PRIMITIVE + 2] = nodeUI.color;
+                    nodes[idx * ATTRIBUTES_PER_PRIMITIVE + 3] = nodeUI.size;
+                },
+
+                /**
+                 * Request from webgl renderer to actually draw our stuff into the
+                 * gl context. This is the core of our shader.
+                 */
+                render : function() {
+                    gl.useProgram(program);
+                    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+                    gl.bufferData(gl.ARRAY_BUFFER, nodes, gl.DYNAMIC_DRAW);
+
+                    if (isCanvasDirty) {
+                        isCanvasDirty = false;
+                        gl.uniformMatrix4fv(locations.transform, false, transform);
+                        gl.uniform2f(locations.screenSize, canvasWidth, canvasHeight);
+                    }
+
+                    gl.vertexAttribPointer(locations.vertexPos, 2, gl.FLOAT, false, ATTRIBUTES_PER_PRIMITIVE * Float32Array.BYTES_PER_ELEMENT, 0);
+                    gl.vertexAttribPointer(locations.customAttributes, 2, gl.FLOAT, false, ATTRIBUTES_PER_PRIMITIVE * Float32Array.BYTES_PER_ELEMENT, 2 * 4);
+
+                    gl.drawArrays(gl.POINTS, 0, nodesCount);
+                },
+
+                /**
+                 * Called by webgl renderer when user scales/pans the canvas with nodes.
+                 */
+                updateTransform : function (newTransform) {
+                    transform = newTransform;
+                    isCanvasDirty = true;
+                },
+
+                /**
+                 * Called by webgl renderer when user resizes the canvas with nodes.
+                 */
+                updateSize : function (newCanvasWidth, newCanvasHeight) {
+                    canvasWidth = newCanvasWidth;
+                    canvasHeight = newCanvasHeight;
+                    isCanvasDirty = true;
+                },
+
+                /**
+                 * Called by webgl renderer to notify us that the new node was created in the graph
+                 */
+                createNode : function (node) {
+                    nodes = webglUtils.extendArray(nodes, nodesCount, ATTRIBUTES_PER_PRIMITIVE);
+                    nodesCount += 1;
+                },
+
+                /**
+                 * Called by webgl renderer to notify us that the node was removed from the graph
+                 */
+                removeNode : function (node) {
+                    if (nodesCount > 0) { nodesCount -=1; }
+
+                    if (node.id < nodesCount && nodesCount > 0) {
+                        // we do not really delete anything from the buffer.
+                        // Instead we swap deleted node with the "last" node in the
+                        // buffer and decrease marker of the "last" node. Gives nice O(1)
+                        // performance, but make code slightly harder than it could be:
+                        webglUtils.copyArrayPart(nodes, node.id*ATTRIBUTES_PER_PRIMITIVE, nodesCount*ATTRIBUTES_PER_PRIMITIVE, ATTRIBUTES_PER_PRIMITIVE);
+                    }
+                },
+
+                /**
+                 * This method is called by webgl renderer when it changes parts of its
+                 * buffers. We don't use it here, but it's needed by API (see the comment
+                 * in the removeNode() method)
+                 */
+                replaceProperties : function(replacedNode, newNode) {},
+            };
+        }
+        ready( getData );
+    </script>
+</body>
+</html>
